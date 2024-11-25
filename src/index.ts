@@ -10,17 +10,18 @@ const getRepositories = async (workspace: string) => {
   try {
     const repositories: string[] = [];
     let nextUrl = `/repositories/${workspace}`;
-
+    let firstRequest = true;
     while (nextUrl) {
       const response = await makeRequest({
         method: 'GET',
         url: nextUrl,
-        params: { pagelen: 100 },
+        params: firstRequest ? { pagelen: 100 } : null,
       });
 
       const repos = response.data.values;
       repositories.push(...repos.map((repo: any) => repo.slug));
 
+      firstRequest = false;
       nextUrl = response.data.next || null;
     }
 
@@ -32,9 +33,8 @@ const getRepositories = async (workspace: string) => {
 };
 
 const getDate = (day: number) => {
-  const date = new Date();
-  date.setDate(date.getDate() - day);
-  return date.toISOString();
+  const now = Date.now();
+  return new Date(now - day * 86_400 * 1000);
 };
 
 const getContributors = async (workspace: string, repositories: string[]) => {
@@ -42,30 +42,35 @@ const getContributors = async (workspace: string, repositories: string[]) => {
   const uniqueContributors = new Set<string>();
   for (const repository of repositories) {
     let nextUrl = `/repositories/${workspace}/${repository}/commits`;
-    while (nextUrl) {
+    let firstRequest = true;
+    let found = false;
+    while (nextUrl && !found) {
       const response = await makeRequest({
         method: 'GET',
         url: nextUrl,
-        params: {
-          q: `date >= "${ninetyDaysAgo}"`,
-          pagelen: 100,
-        },
+        params: firstRequest
+          ? {
+              pagelen: 100,
+            }
+          : null,
       });
 
       const data = response.data;
-      data.values.forEach(
-        (commit: {
-          author: { user: { display_name: string }; raw: string };
-        }) => {
-          if (commit.author.user) {
-            uniqueContributors.add(commit.author.user.display_name);
-          } else {
-            uniqueContributors.add(commit.author.raw);
-          }
-        },
-      );
+      for (const commit of data.values) {
+        if (new Date(commit.date) < ninetyDaysAgo) {
+          found = true;
+          break;
+        }
 
-      nextUrl = data.next;
+        if (commit.author.user) {
+          uniqueContributors.add(commit.author.user.display_name);
+        } else {
+          uniqueContributors.add(commit.author.raw);
+        }
+      }
+
+      firstRequest = false;
+      nextUrl = data.next || null;
     }
   }
 
@@ -82,7 +87,7 @@ const makeRequest = async (config: AxiosRequestConfig) => {
       return response;
     } catch (error) {
       const axiosError = error as AxiosError;
-      console.log('Request failed: ', axiosError.message);
+      console.error('Request failed: ', axiosError?.message ?? 'Unknown error');
       const delay = Math.min(maxDelay, minDelay * Math.pow(2, attempt));
       const jitteredDelay = delay * (0.9 + Math.random() * 0.2);
       await new Promise((resolve) => setTimeout(resolve, jitteredDelay));
