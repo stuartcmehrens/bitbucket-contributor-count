@@ -27,3 +27,15 @@ docker run --rm bitbucket-contributor-count:latest bitbucket -t "bitbucket_token
 ```
 
 This will execute the utility and output the number of unique contributors in Bitbucket over the last 90 days.
+
+Optionally, you can save the repositories fetched from the Bitbucket API to a file, which can then be used to pass into the utility during a subsequent run. This is useful if you have many repositories in a workspace since Bitbucket has a default rate limit of 1000 authenticated requests per hour:
+
+```sh
+docker run -v "$(pwd)/output":/data --rm bitbucket-contributor-count:latest bitbucket -t "bitbucket_token" -w "bitbucket_workspace" --save-repositories get-contributors
+```
+
+```sh
+docker run -v "$(pwd)/output":/data --rm bitbucket-contributor-count:latest bitbucket -t "bitbucket_token" -w "bitbucket_workspace" --repositories "/data/repositories.json" get-contributors
+```
+
+Note that the utility is designed to retry failed API requests continuously with a maximum wait between retries set to 5 minutes.
